@@ -18,7 +18,7 @@ const CUSTOMER_BACKEND_URL = process.env.CUSTOMER_BACKEND_URL || "https://custom
 // checks against its own `${host}/mcp` — i.e. the MCP protected resource
 // this token was actually issued for. Without this check, any token signed
 // by the customer backend's key (for *any* purpose) would be accepted here.
-const MCP_APP_RESOURCE_URL = process.env.MCP_APP_RESOURCE_URL || "https://prototype-mcp-app.onrender.com/mcp";
+const MCP_APP_RESOURCE_URL = process.env.MCP_APP_RESOURCE_URL || "https://prototype-mcp.onrender.com/mcp";
 
 // Helper to convert JWK from Customer Backend into standard PEM format for JWT verification
 let cachedPemPublicKey = null;
