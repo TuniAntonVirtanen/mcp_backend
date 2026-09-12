@@ -11,20 +11,6 @@ app.use((req, res, next) => {
 
 const CUSTOMER_BACKEND_URL = process.env.CUSTOMER_BACKEND_URL || "https://customer-backend-stqk.onrender.com";
 
-// PROD NOTE: Cache JWKS key in memory to avoid fetching on every request.
-let cachedPublicKey = null;
-
-const getPublicKey = async () => {
-  if (cachedPublicKey) return cachedPublicKey;
-  const res = await fetch(`${CUSTOMER_BACKEND_URL}/.well-known/jwks.json`);
-  const jwks = await res.json();
-  
-  // Extract key and build PEM
-  const jwk = jwks.keys[0];
-  cachedPublicKey = jwt.jwkToPem ? jwt.jwkToPem(jwk) : jwk; 
-  return cachedPublicKey;
-};
-
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -34,16 +20,12 @@ const authenticateToken = async (req, res, next) => {
   const token = authHeader.split(" ")[1];
 
   try {
-    // PROD NOTE: In production, use `jwks-rsa` package to handle JWKS caching and key rotation natively.
     const resKey = await fetch(`${CUSTOMER_BACKEND_URL}/.well-known/jwks.json`);
     const jwks = await resKey.json();
-    const key = jwks.keys[0];
     
-    // Cryptographically verify token signature, expiration, and issuer
     const decoded = jwt.decode(token, { complete: true });
     if (!decoded) return res.status(403).json({ error: "forbidden", message: "Malformed token" });
 
-    // Store identity context on request
     req.user = decoded.payload.sub;
     next();
   } catch (err) {
@@ -54,7 +36,6 @@ const authenticateToken = async (req, res, next) => {
 
 app.get("/api/v1/projects", authenticateToken, async (req, res) => {
   try {
-    // Forward Bearer JWT token to Customer Backend
     const response = await fetch(`${CUSTOMER_BACKEND_URL}/api/data`, {
       headers: { Authorization: req.headers.authorization }
     });
@@ -64,7 +45,12 @@ app.get("/api/v1/projects", authenticateToken, async (req, res) => {
     }
 
     const data = await response.json();
-    res.json({ status: "success", user: req.user, data: data });
+
+    res.json({
+      status: "success",
+      user: req.user,
+      data: data
+    });
   } catch (err) {
     console.error("[MCP BACKEND ERROR]", err.message);
     res.status(500).json({ error: "internal_error" });
