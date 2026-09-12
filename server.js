@@ -12,6 +12,14 @@ app.use((req, res, next) => {
 
 const CUSTOMER_BACKEND_URL = process.env.CUSTOMER_BACKEND_URL || "https://customer-backend-stqk.onrender.com";
 
+// The resource identifier that tokens flowing through this service must be
+// bound to. This is the same value the client requested as `resource` at
+// /oauth/authorize on the customer backend, and the same value mcp-app
+// checks against its own `${host}/mcp` — i.e. the MCP protected resource
+// this token was actually issued for. Without this check, any token signed
+// by the customer backend's key (for *any* purpose) would be accepted here.
+const MCP_APP_RESOURCE_URL = process.env.MCP_APP_RESOURCE_URL || "https://prototype-mcp-app.onrender.com/mcp";
+
 // Helper to convert JWK from Customer Backend into standard PEM format for JWT verification
 let cachedPemPublicKey = null;
 
@@ -20,7 +28,7 @@ async function getPublicKeyFromJWKS() {
 
   const resKey = await fetch(`${CUSTOMER_BACKEND_URL}/.well-known/jwks.json`);
   if (!resKey.ok) throw new Error(`Failed to fetch JWKS: ${resKey.status}`);
-  
+
   const jwks = await resKey.json();
   const jwk = jwks.keys && jwks.keys[0];
   if (!jwk) throw new Error("No public key found in JWKS");
@@ -41,9 +49,14 @@ const authenticateToken = async (req, res, next) => {
 
   try {
     const publicKey = await getPublicKeyFromJWKS();
-    
-    // Authenticate token cryptographically against RS256 signature
-    const verifiedPayload = jwt.verify(token, publicKey, { algorithms: ["RS256"] });
+
+    // Authenticate token cryptographically against RS256 signature, and
+    // verify it was actually issued for the mcp-app resource this service
+    // sits behind, not merely signed by a trusted key for some other purpose.
+    const verifiedPayload = jwt.verify(token, publicKey, {
+      algorithms: ["RS256"],
+      audience: MCP_APP_RESOURCE_URL
+    });
 
     req.user = verifiedPayload.sub;
     next();
