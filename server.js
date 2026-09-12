@@ -3,15 +3,14 @@ import express from "express";
 const app = express();
 app.use(express.json());
 
-// Request logger
 app.use((req, res, next) => {
   console.log(`[MCP BACKEND REQ] ${req.method} ${req.url}`);
   next();
 });
 
 const EXPECTED_TOKEN = process.env.EXPECTED_TOKEN || "mock_access_token_9999";
+const CUSTOMER_BACKEND_URL = process.env.CUSTOMER_BACKEND_URL || "https://customer-backend-stqk.onrender.com";
 
-// Middleware to authorize incoming requests from MCP App
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -20,27 +19,33 @@ const authenticateToken = (req, res, next) => {
 
   const token = authHeader.split(" ")[1];
   if (token !== EXPECTED_TOKEN) {
-    console.log(`[MCP BACKEND AUTH] Invalid token: ${token}`);
     return res.status(403).json({ error: "forbidden" });
   }
 
   next();
 };
 
-// Internal domain REST endpoint called by MCP App
-app.get("/api/v1/projects", authenticateToken, (req, res) => {
-  // Perform business logic, scrub data, or query Customer Backend endpoints here
-  console.log("[MCP BACKEND] Fetching project data...");
-  
-  res.json({
-    status: "success",
-    summary: `🎉 Successfully retrieved Customer Data for user "user"! Active Sprint: 12 completed tasks, 3 in progress.`,
-    data: {
-      completedTasks: 12,
-      inProgressTasks: 3,
-      user: "user"
+app.get("/api/v1/projects", authenticateToken, async (req, res) => {
+  try {
+    // Relay request to Customer Backend to fetch real data
+    const response = await fetch(`${CUSTOMER_BACKEND_URL}/api/data`, {
+      headers: { Authorization: req.headers.authorization }
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: "failed_to_fetch_data" });
     }
-  });
+
+    const data = await response.json();
+
+    res.json({
+      status: "success",
+      data: data
+    });
+  } catch (err) {
+    console.error("[MCP BACKEND ERROR]", err.message);
+    res.status(500).json({ error: "internal_error" });
+  }
 });
 
 const port = process.env.PORT || 5000;
